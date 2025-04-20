@@ -2,9 +2,28 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Flask Report App</title>
+    <title>Report Generator</title>
 </head>
 <body>
-    <h1>Welcome to the Flask Report Generator!</h1>
+    <h2>Upload Your Excel File</h2>
+    <form action="/generate" method="post" enctype="multipart/form-data">
+        <label>Select Report Type:</label>
+        <select name="report_type" required>
+            <option value="sales">Sales</option>
+            <option value="marketing">Marketing</option>
+            <option value="leads">Leads</option>
+            <option value="inventory">Inventory</option>
+        </select>
+        <br><br>
+
+        <label>Start Date:</label>
+        <input type="date" name="start_date" required>
+        <label>End Date:</label>
+        <input type="date" name="end_date" required>
+        <br><br>
+
+        <input type="file" name="file" accept=".xlsx" required>
+        <button type="submit">Generate Report</button>
+    </form>
 </body>
 </html>

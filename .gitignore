@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+venv/
+.env/
+.env
+
+# Excel or dataset backups
+*.csv
+*.xlsx
+*.xls
+
+# VS Code
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Node (in case there's frontend stuff)
+node_modules/
+
+# Render & Flask logs
+*.log
