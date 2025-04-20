@@ -1,91 +1,176 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file
-import pandas as pd
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
+from flask_login import LoginManager, login_user, logout_user, login_required, UserMixin, current_user
+import sqlite3
 import os
+import pandas as pd
+from werkzeug.utils import secure_filename
 from datetime import datetime
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = 'supersecretkey'
+
+# Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
+login_manager.login_view = 'login'
 
-# In-memory data structure to simulate user data
-users = {'admin': {'password': 'admin123'}}
+UPLOAD_FOLDER = 'uploads'
+REPORT_FOLDER = 'reports'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(REPORT_FOLDER, exist_ok=True)
 
-# Setup for file upload and storage
-UPLOAD_FOLDER = 'uploads/'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
+# ================= User Class ====================
 class User(UserMixin):
-    pass
+    def __init__(self, id_, username):
+        self.id = id_
+        self.username = username
+
+    @staticmethod
+    def get_user_by_username(username):
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = c.fetchone()
+        conn.close()
+        if user:
+            return User(user[0], user[1])
+        return None
+
+    @staticmethod
+    def get_user_by_id(user_id):
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = c.fetchone()
+        conn.close()
+        if user:
+            return User(user[0], user[1])
+        return None
 
 @login_manager.user_loader
 def load_user(user_id):
-    user = User()
-    user.id = user_id
-    return user
+    return User.get_user_by_id(user_id)
 
-# Home page with file upload
-@app.route("/", methods=["GET", "POST"])
+# ================ DB Setup ======================
+def init_db():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL
+        )
+    ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            file_name TEXT,
+            report_type TEXT,
+            date_created TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# Call once to create a test user
+def create_test_user():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    try:
+        c.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "admin123"))
+    except sqlite3.IntegrityError:
+        pass  # user already exists
+    conn.commit()
+    conn.close()
+
+init_db()
+create_test_user()
+
+# =============== Routes =====================
+
+@app.route('/')
 @login_required
 def index():
-    if request.method == "POST":
-        file = request.files['file']
-        if file and file.filename.endswith('.xlsx'):
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-            file.save(filepath)
-            return redirect(url_for('process_data', filename=file.filename))
     return render_template('index.html')
 
-# Process data based on user selection
-@app.route("/process/<filename>", methods=["GET", "POST"])
-@login_required
-def process_data(filename):
-    df = pd.read_excel(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-
-    # Handle user filter options
-    if request.method == "POST":
-        date_range = request.form.get("date_range")
-        report_type = request.form.get("report_type")
-        # Logic to filter and generate reports based on selections
-        filtered_data = df  # Apply your filters here based on user input
-
-        # Generate report logic based on the selected report type
-        if report_type == "sales":
-            report_data = filtered_data.groupby('Sales').sum()
-        elif report_type == "marketing":
-            report_data = filtered_data.groupby('Marketing').sum()
-        # You can add more report types like leads, inventory, etc.
-
-        # Save the filtered report to a new Excel file
-        output_file = f'reports/{report_type}_report_{datetime.now().strftime("%Y%m%d%H%M%S")}.xlsx'
-        report_data.to_excel(output_file)
-
-        return send_file(output_file, as_attachment=True)
-
-    return render_template('process.html', filename=filename, df=df)
-
-# User login route
-@app.route('/login', methods=["GET", "POST"])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        if username in users and users[username]['password'] == password:
-            user = User()
-            user.id = username
-            login_user(user)
+        conn = sqlite3.connect('users.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+        user = c.fetchone()
+        conn.close()
+        if user:
+            user_obj = User(user[0], user[1])
+            login_user(user_obj)
             return redirect(url_for('index'))
+        else:
+            flash('Invalid credentials')
     return render_template('login.html')
 
-# User logout route
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('login'))
 
-if __name__ == "__main__":
+@app.route('/upload', methods=['POST'])
+@login_required
+def upload_file():
+    file = request.files['file']
+    if file:
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        session['uploaded_file'] = filepath
+        flash('File uploaded successfully!')
+    return redirect(url_for('index'))
+
+@app.route('/generate_report', methods=['POST'])
+@login_required
+def generate_report():
+    report_type = request.form.get('report_type')
+    date_range = request.form.get('date_range')
+
+    filepath = session.get('uploaded_file')
+    if not filepath or not os.path.exists(filepath):
+        flash("No file uploaded.")
+        return redirect(url_for('index'))
+
+    # Dummy report generation using pandas
+    df = pd.read_excel(filepath)
+    report = df.head(10)  # Placeholder
+
+    report_filename = f"{current_user.username}_{report_type}_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+    report_path = os.path.join(REPORT_FOLDER, report_filename)
+    report.to_excel(report_path, index=False)
+
+    # Save to history
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO history (user_id, file_name, report_type, date_created) VALUES (?, ?, ?, ?)",
+              (current_user.id, report_filename, report_type, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    conn.commit()
+    conn.close()
+
+    flash("Report generated successfully!")
+    return send_file(report_path, as_attachment=True)
+
+@app.route('/history')
+@login_required
+def history():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute("SELECT file_name, report_type, date_created FROM history WHERE user_id = ?", (current_user.id,))
+    history_data = c.fetchall()
+    conn.close()
+    return render_template('history.html', history=history_data)
+
+# ================ Run App ======================
+if __name__ == '__main__':
     app.run(debug=True)
