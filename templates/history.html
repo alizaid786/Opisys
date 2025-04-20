@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>History</title></head>
+<body>
+    <h2>Your Report History</h2>
+    <table border="1">
+        <tr><th>File</th><th>Type</th><th>Date</th></tr>
+        {% for file, type, date in history %}
+        <tr><td>{{ file }}</td><td>{{ type }}</td><td>{{ date }}</td></tr>
+        {% endfor %}
+    </table>
+    <a href="/">Back</a>
+</body>
+</html>

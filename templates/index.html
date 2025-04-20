@@ -1,29 +1,39 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Report Generator</title>
-</head>
+<html>
+<head><title>Dashboard</title></head>
 <body>
-    <h2>Upload Your Excel File</h2>
-    <form action="/generate" method="post" enctype="multipart/form-data">
-        <label>Select Report Type:</label>
-        <select name="report_type" required>
+    <h2>Welcome, {{ current_user.username }}</h2>
+
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <input type="submit" value="Upload Excel">
+    </form>
+
+    <form action="/generate_report" method="post">
+        <label>Report Type:</label>
+        <select name="report_type">
             <option value="sales">Sales</option>
             <option value="marketing">Marketing</option>
-            <option value="leads">Leads</option>
+            <option value="lead">Lead</option>
             <option value="inventory">Inventory</option>
-        </select>
-        <br><br>
+        </select><br>
 
-        <label>Start Date:</label>
-        <input type="date" name="start_date" required>
-        <label>End Date:</label>
-        <input type="date" name="end_date" required>
-        <br><br>
+        <label>Date Range (optional):</label>
+        <input type="text" name="date_range"><br>
 
-        <input type="file" name="file" accept=".xlsx" required>
-        <button type="submit">Generate Report</button>
+        <input type="submit" value="Generate Report">
     </form>
+
+    <a href="/history">View History</a> | <a href="/logout">Logout</a>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <ul>
+            {% for message in messages %}
+                <li>{{ message }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
 </body>
 </html>
